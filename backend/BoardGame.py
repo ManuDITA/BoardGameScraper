@@ -17,4 +17,4 @@ class BoardGame:
         self.boardgamesubdomain = boardgamesubdomain
         
     def __str__(self):
-        return f"Title: {self.title}"
+        return f"{self.title}" #{" ".join(str(x) for x in self.categories)}" #| {" ".join(str(x) for x in self.boardgamesubdomain)}"

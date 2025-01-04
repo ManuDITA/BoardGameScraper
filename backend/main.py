@@ -1,6 +1,8 @@
 import json
 from bs4 import BeautifulSoup
+import csv
 import requests
+from termcolor import colored
 from BoardGame import BoardGame
 import time
 BOARDGAMEGEEK = "https://boardgamegeek.com/"
@@ -12,6 +14,7 @@ def getGameListPageHtml(pageNumber):
     url = BOARDGAMEGEEKBROWSE + str(pageNumber)
     
     response = requests.get(url)
+    response.raise_for_status()
     if response.status_code == 200:
         #print("Successfully retrieved page ",  pageNumber)
         return response.text
@@ -31,6 +34,7 @@ def getGamePageHtml(boardgameLink):
 def analyzeGame(boardgameLink):
     
     soup = BeautifulSoup(getGamePageHtml(boardgameLink), 'html.parser')
+    #print(soup.prettify())
     
     string_tag = soup.find_all("script")[2].string
     start_index = string_tag.find('GEEK.geekitemPreload = ') + len('GEEK.geekitemPreload = ')
@@ -50,9 +54,9 @@ def analyzeGame(boardgameLink):
     minplaytime = geekitemPreload['item']['minplaytime']
     maxplaytime = geekitemPreload['item']['maxplaytime']
     yearpublished = geekitemPreload['item']['yearpublished']
-    categories = geekitemPreload['item']['links']['boardgamecategory']
-    boardgamemechanic = geekitemPreload['item']['links']['boardgamemechanic']
-    boardgamesubdomain = geekitemPreload['item']['links']['boardgamesubdomain']
+    categories = [category['name'] for category in geekitemPreload['item']['links']['boardgamecategory']]
+    boardgamemechanic = [mechanic['name'] for mechanic in geekitemPreload['item']['links']['boardgamemechanic']]
+    boardgamesubdomain = [subdomain['name'] for subdomain in geekitemPreload['item']['links']['boardgamesubdomain']]
     
     boardGame = BoardGame(
         title=title,
@@ -74,27 +78,60 @@ def analyzeGame(boardgameLink):
     
     return boardGame
     
-    
-    
-
 def analyzePage():
     boardgames:BoardGame = []
     tstart = time.time()
 
     index = 0
-    for i in range(1, 2):
+    for i in range(11, 100):
         
         #analyzing page i
         soup = BeautifulSoup(getGameListPageHtml(i), 'html.parser')
-
+        boardgameRows = soup.find_all(name="tr", id="row_")
+        if not boardgameRows:
+            print(f"No rows found for {i} page")
+            return
         
-        for boardgameBS in soup.find_all(name="tr", id="row_")[0:]:
+        for boardgameBS in boardgameRows:
             boardgameLink = boardgameBS.find_all("a")[2].get("href")
             boardgames.append(analyzeGame(BOARDGAMEGEEK + boardgameLink))
             print(boardgames[index])
             index += 1
         
+        print(colored(f"Page {i} analyzed", "green"))
+        
     tfinish = time.time()
     print(f"It took {float(tfinish - tstart).__round__(2)}s to exectue {i} pages" )
+    printGamesCSV(boardgames)
     
+def printGamesCSV(boardgames):
+    csv_file_path = 'board_games2.csv'
+
+    # Write the BoardGame objects to the CSV file
+    with open(csv_file_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        
+        # Write the header
+        writer.writerow([
+            'Title', 'Link', 'Object ID', 'Min Players', 'Max Players', 'Year Published',
+            'Min Playtime', 'Max Playtime', 'Ranking', 'Amount of Ratings', 'Average Rating',
+            'Min Age', 'Categories', 'Board Game Mechanic', 'Board Game Subdomain'
+        ])
+        
+        # Write the data rows
+        for game in boardgames:
+            writer.writerow([
+                game.title, game.link, game.objectid, game.minplayers, game.maxplayers,
+                game.yearpublished, game.minplaytime, game.maxplaytime, game.ranking,
+                game.amountOfRatings, game.averageRating, game.minage,
+                ', '.join(game.categories), ', '.join(game.boardgamemechanic),
+                ', '.join(game.boardgamesubdomain)
+            ])
+    return
+
 analyzePage()
+f = open("1.html", "a")
+f.write(getGameListPageHtml(4))
+
+f2 = open("2.html", "a")
+f2.write(getGameListPageHtml(14))
