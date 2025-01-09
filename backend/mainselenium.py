@@ -1,27 +1,45 @@
-import json
-from bs4 import BeautifulSoup
-import csv
 import requests
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+
+from bs4 import BeautifulSoup
+import json
+import csv
+
 from termcolor import colored
 from BoardGame import BoardGame
 import time
-BOARDGAMEGEEK = "https://boardgamegeek.com/"
+
+BOARDGAMESLOGIN = "https://boardgamegeek.com/login?redirect_server=1"
 BOARDGAMEGEEKBROWSE = "https://boardgamegeek.com/browse/boardgame/page/"
+BOARDGAMEGEEK = "https://boardgamegeek.com/"
+
+CSVFILE = "boardgames.csv"
 
 
-
-def getGameListPageHtml(pageNumber):
-    url = BOARDGAMEGEEKBROWSE + str(pageNumber)
+def startBrowser():
+    driver.get(BOARDGAMESLOGIN)
     
-    response = requests.get(url)
-    response.raise_for_status()
-    if response.status_code == 200:
-        #print("Successfully retrieved page ",  pageNumber)
-        return response.text
-    else:
-        print(f"Failed to load page")
-    return None
+    with open('credentials.json') as f:
+        f = json.load(f)
+        username = f['username']
+        password = f['password']
 
+    webconsentData = driver.find_element(By.CLASS_NAME, "fc-cta-do-not-consent").click()
+    webusername = driver.find_element(By.ID, "inputUsername")
+    webpassword = driver.find_element(By.ID, "inputPassword")
+    print(webusername.screenshot("username.png"))
+    webusername.send_keys(username)
+    webpassword.send_keys(password)
+    driver.find_element(By.CLASS_NAME, "btn-primary").click()
+    
+    wait = WebDriverWait(driver, 5)
+    wait.until(lambda d : driver.current_url == "https://boardgamegeek.com/")
+    
 def getGamePageHtml(boardgameLink):
     response = requests.get(boardgameLink)
     if response.status_code == 200:
@@ -77,38 +95,11 @@ def analyzeGame(boardgameLink):
     )
     
     return boardGame
-    
-def analyzePage():
-    boardgames:BoardGame = []
-    tstart = time.time()
 
-    index = 0
-    for i in range(11, 100):
-        
-        #analyzing page i
-        soup = BeautifulSoup(getGameListPageHtml(i), 'html.parser')
-        boardgameRows = soup.find_all(name="tr", id="row_")
-        if not boardgameRows:
-            print(f"No rows found for {i} page")
-            return
-        
-        for boardgameBS in boardgameRows:
-            boardgameLink = boardgameBS.find_all("a")[2].get("href")
-            boardgames.append(analyzeGame(BOARDGAMEGEEK + boardgameLink))
-            print(boardgames[index])
-            index += 1
-        
-        print(colored(f"Page {i} analyzed", "green"))
-        
-    tfinish = time.time()
-    print(f"It took {float(tfinish - tstart).__round__(2)}s to exectue {i} pages" )
-    printGamesCSV(boardgames)
-    
-def printGamesCSV(boardgames):
-    csv_file_path = 'board_games2.csv'
+def createCSV(csvPath):
 
     # Write the BoardGame objects to the CSV file
-    with open(csv_file_path, mode='w', newline='') as file:
+    with open(csvPath, mode='a', newline='\n') as file:
         writer = csv.writer(file)
         
         # Write the header
@@ -117,21 +108,64 @@ def printGamesCSV(boardgames):
             'Min Playtime', 'Max Playtime', 'Ranking', 'Amount of Ratings', 'Average Rating',
             'Min Age', 'Categories', 'Board Game Mechanic', 'Board Game Subdomain'
         ])
+    
+    return
+    
+def analyzePage():
+    boardgames:BoardGame = []
+    tstart = time.time()
+
+    index = 0
+    for i in range(20, 100):
+        
+        driver.get(BOARDGAMEGEEKBROWSE + str(i))
+        
+        print(driver.current_url)
+        htmlSource = driver.page_source
+        #print(htmlSource)
+        #analyzing page i
+        soup = BeautifulSoup(htmlSource, 'html.parser')
+        #print(soup.prettify())
+        boardgameRows = soup.find_all(name="tr", id="row_")
+        if not boardgameRows:
+            file = open("error.html", "a")
+            file.write(soup.prettify())
+            print(f"No rows found for {i} page")
+            return
+        
+        for boardgameBS in boardgameRows:
+            boardgameLink = boardgameBS.find_all("a")[2].get("href")
+            boardgames.append(analyzeGame(BOARDGAMEGEEK + boardgameLink))
+            print(boardgames[index])
+            printGameCSV(CSVFILE, boardgames[index])
+            index += 1
+        
+        print(colored(f"Page {i} analyzed", "green"))
+        
+    tfinish = time.time()
+    print(f"It took {float(tfinish - tstart).__round__(2)}s to exectue {i} pages" )
+    
+def printGameCSV(csvPath, game:BoardGame):
+
+    # Write the BoardGame objects to the CSV file
+    with open(csvPath, mode='a', newline="\n") as file:
+        writer = csv.writer(file)
         
         # Write the data rows
-        for game in boardgames:
-            writer.writerow([
-                game.title, game.link, game.objectid, game.minplayers, game.maxplayers,
-                game.yearpublished, game.minplaytime, game.maxplaytime, game.ranking,
-                game.amountOfRatings, game.averageRating, game.minage,
-                ', '.join(game.categories), ', '.join(game.boardgamemechanic),
-                ', '.join(game.boardgamesubdomain)
-            ])
+        writer.writerow([
+            game.title, game.link, game.objectid, game.minplayers, game.maxplayers,
+            game.yearpublished, game.minplaytime, game.maxplaytime, game.ranking,
+            game.amountOfRatings, game.averageRating, game.minage,
+            ', '.join(game.categories), ', '.join(game.boardgamemechanic),
+            ', '.join(game.boardgamesubdomain)
+        ])
+        
+        
     return
 
-analyzePage()
-f = open("1.html", "a")
-f.write(getGameListPageHtml(4))
 
-f2 = open("2.html", "a")
-f2.write(getGameListPageHtml(14))
+driver = webdriver.Chrome()
+
+createCSV(CSVFILE)
+startBrowser()
+analyzePage()
